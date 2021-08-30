@@ -1,16 +1,13 @@
 # app/models.py
 import base64
-import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from time import time
 from hashlib import md5
-from flask import current_app, jsonify, redirect, request, url_for
-# To load the users from the database
-from flask_login import UserMixin
-from app import create_app, db, login
-# JWT
-# import jwt
+from flask import current_app,  redirect, request, url_for
+# from flask_login import UserMixin
+# from app import create_app, db, login
+from app import db
 from functools import wraps
 from werkzeug.security import safe_str_cmp
 
@@ -55,7 +52,8 @@ class PaginatedAPIMixin(object):
         return data
 
 
-class User(PaginatedAPIMixin, UserMixin, db.Model):
+# class User(PaginatedAPIMixin, UserMixin, db.Model):
+class User(PaginatedAPIMixin,  db.Model):
     id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(64),  nullable=False, unique=False)
     last_name = db.Column(db.String(64),  nullable=False, unique=False)
@@ -91,7 +89,6 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
     #     own = Question.query.filter_by(user_id=self.id)
     #     return answered.union(own).order_by(Question.timestamp.desc())
 
-
     def create_reset_user_token(self, expires_in=600):
         current_app.logger.debug(
             "[create_reset_user_token] User Email: " + str(self.email))
@@ -103,7 +100,6 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
         if expires_in <= 0:
             return None
         return self.token
-
 
     def remove_user_token(self):
         self.create_reset_user_token(-1)
@@ -137,8 +133,7 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
             'question_count':  self.asked.count() if self.asked else [],
             'questions': ([question.to_dict() for question in self.asked.all()]),
             '_links': {
-                'self': url_for('api.get_user', id=self.id),
-                'answered': url_for('api.get_answered', id=self.id),
+                # 'answered': url_for('get_answered', id=self.id),
             }
         }
         return data
@@ -154,10 +149,10 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
         return '<UserName: {0} Email: {1}>'.format(self.first_name + ' ' + self.last_name, self.email)
 
 
-@ login.user_loader
-def load_user(id):
-    print("******* ############# [load_user'] Loading User ID: " + str(id))
-    return User.query.get(int(id))
+# @login.user_loader
+# def load_user(id):
+#     print("******* ############# [load_user'] Loading User ID: " + str(id))
+#     return User.query.get(int(id))
 
 # ------------------------------------------------------------------------------
 # Decorator for verifying the Token
@@ -189,7 +184,8 @@ def token_required(f):
             current_app.logger.error("[token_required] " + current_user_token)
             return redirect(url_for('auth.register'))
 
-        current_app.logger.debug("[token_required] Current User: " + current_user.username())
+        current_app.logger.debug(
+            "[token_required] Current User: " + current_user.username())
 
         return f(current_user)
 
@@ -289,18 +285,3 @@ class File(db.Model):
 
 #     def __repr__(self):
 #         return '<Answer {}>'.format(self.body)
-
-
-# ------------------------------------------------------------------------------
-# Notification  Class
-# Notify of new PrivateQuestion for the User
-# Being generic, it's not entirely tied to PrivateQuestion notifications
-# ------------------------------------------------------------------------------
-
-
-# class Notification(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     name = db.Column(db.String(128), index=True)
-#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-#     timestamp = db.Column(db.Float, index=True, default=time)
-#     payload_json = db.Column(db.Text)

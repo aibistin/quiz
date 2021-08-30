@@ -3,29 +3,15 @@ from datetime import datetime
 # HTML template module
 from flask import flash, redirect, render_template, request, session, url_for
 from flask import g, jsonify
-from flask_login import current_user, login_required
 from app import current_app, db
 from app.main import bp
-from app.main.forms import EditProfileForm, EmptyForm, QuestionForm
-# Commmunicate logins with the db
 from app.models import User, Question, Option, token_required
 
 
-@bp.before_request
-def before_request():
-    if current_user.is_authenticated:
-        current_user.last_seen = datetime.utcnow()
-        db.session.commit()
-
-
 @bp.route("/", methods=['GET', 'POST'])
-@bp.route("/home", methods=['GET', 'POST'])
 @bp.route("/test", methods=['GET', 'POST'])
 @token_required
 def home():
-    if current_user:
-        current_app.logger.info(
-            "[home] You are logged in as {}".format(current_user.username))
 
     current_app.logger.debug("[home] Session: ")
     current_app.logger.debug(session)
@@ -41,7 +27,7 @@ def home():
 def test(current_user=None):
     if current_user:
         current_app.logger.debug("[test_route] You are logged in as: ")
-        current_app.logger.debug( current_user )
+        current_app.logger.debug(current_user)
 
     current_app.logger.debug("[test_route] Session: ")
     current_app.logger.debug(session)
@@ -87,16 +73,15 @@ def test(current_user=None):
     asked_questions = ([question.to_dict()
                         for question in current_user.asked.all()])
     current_app.logger.debug("[test_route] User Questions for " +
-          current_user.first_name + ' ' + current_user.last_name)
+                             current_user.first_name + ' ' + current_user.last_name)
     current_app.logger.debug(asked_questions)
     current_app.logger.debug("[test_route] Current Question")
     current_app.logger.debug(current_question)
 
-
     data['next_url'] = url_for('main.test', user_token=current_user.token,
-                       page=questions.next_num) if questions.has_next else None
+                               page=questions.next_num) if questions.has_next else None
     data['prev_url'] = url_for('main.test', user_token=current_user.token,
-                       page=questions.prev_num) if questions.has_prev else None
+                               page=questions.prev_num) if questions.has_prev else None
     # return jsonify({**current_question, **{'next_url' : next_url ,'prev_url': prev_url }})
     data["user"] = current_user.to_dict()
 
@@ -105,18 +90,12 @@ def test(current_user=None):
     return jsonify(data)
 
 
-# def user(username):
-#     user = User.query.filter_by(username=username).first_or_404()
-#     questions = current_user.asked().all()
-#     # return render_template('user.html', user=user, questions=questions, form=form)
-
-
 # ------------------------------------------------------------------------------
 #    Answer and Unanswer
 # ------------------------------------------------------------------------------
 
 @bp.route('/answer/<username>', methods=['POST'])
-@login_required
+@token_required
 def answer(username):
     form = EmptyForm()
 
