@@ -1,0 +1,108 @@
+{% extends 'bootstrap/base.html' %}
+
+<html>
+    {% block title %}
+    <head>
+        {% if title %}
+            <title>{{ title }}</title>
+        {% else %}
+            <title>Quiz Sender</title>
+        {% endif %}
+    </head>
+    {% endblock %}
+    <body>
+        {% block navbar %}
+        <nav class="navbar navbar-default">
+                <a href="{{ url_for('main.home') }}">Home</a>
+            {% if current_user.is_anonymous %}
+                <a href="{{ url_for('auth.register') }}">Login</a>
+            {% else %}
+                <a href="{{ url_for('auth.logout') }}">Logout</a>
+            {% endif %}
+        </nav>
+
+        {% endblock %}
+        <hr/>
+        {% block content %}
+
+        <div class="container">
+            {% if current_user.is_authenticated %}
+            {% endif %}
+    
+            {% if questions %}
+            <ul>
+            {% for question in questions %}
+                <div class="alert alert-info" role="alert">{{ question }}</div>
+            {% endfor %}
+            </ul>
+            {% endif %}
+    
+            {# The application content is inserted below #}
+            {% block app_content %}{% endblock %}
+        </div>
+        {% endblock %}
+    </body>
+</html>
+
+{% block scripts %}
+   {{ super() }}
+   {{ moment.include_moment() }}
+
+   <script>
+
+    $(function () {
+       var timer = null;
+       var xhr = null;
+       $('.user_popup').hover(
+           function(event) {
+               // mouse in event handler
+               var elem = $(event.currentTarget);
+               timer = setTimeout(function() {
+                   timer = null;
+                   xhr = $.ajax(
+                       '/user/' + elem.first().text().trim() + '/popup').done(
+                           function(data) {
+                               xhr = null;
+                               elem.popover({
+                                   trigger: 'manual',
+                                   html: true,
+                                   animation: false,
+                                   container: elem,
+                                   content: data
+                               }).popover('show');
+                               flask_moment_render_all();
+                           }
+                       );
+               }, 1000);
+           },
+
+           function(event) {
+               // mouse out event handler
+               var elem = $(event.currentTarget);
+               if (timer) {
+                   clearTimeout(timer);
+                   timer = null;
+               }
+               else if (xhr) {
+                   xhr.abort();
+                   xhr = null;
+               }
+               else {
+                   elem.popover('destroy');
+               }
+           }
+       );
+    });
+
+    /*************************************************************************/
+    // function set_task_progress(task_id, progress) {
+    //         $('#' + task_id + '-progress').text(progress);
+    // }
+    /*************************************************************************/
+
+
+    /*************************************************************************/
+
+
+    </script>
+{% endblock %}
