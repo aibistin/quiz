@@ -9,20 +9,21 @@ from flask import current_app,  redirect, request, url_for
 # from app import create_app, db, login
 from app import db
 from functools import wraps
+from urllib.parse import quote, unquote
 from werkzeug.security import safe_str_cmp
 
 
 # Associative or bridging table
-user_questions = db.Table('user_questions',
-                          db.Column('user_id', db.Integer,
-                                    db.ForeignKey('user.id')),
-                          db.Column('question_id', db.Integer,
-                                    db.ForeignKey('question.id')),
-                          db.Column('is_correct', db.Boolean,
-                                    nullable=False, default=0),
-                          db.UniqueConstraint(
-                              'user_id', 'question_id', name='user_question_uix_1')
-                          )
+# user_questions = db.Table('user_questions',
+#                           db.Column('user_id', db.Integer,
+#                                     db.ForeignKey('user.id')),
+#                           db.Column('question_id', db.Integer,
+#                                     db.ForeignKey('question.id')),
+#                           db.Column('is_correct', db.Boolean,
+#                                     nullable=False, default=0),
+#                           db.UniqueConstraint(
+#                               'user_id', 'question_id', name='user_question_uix_1')
+#                           )
 
 
 # ------------------------------------------------------------------------------
@@ -52,22 +53,20 @@ class PaginatedAPIMixin(object):
         return data
 
 
-# class User(PaginatedAPIMixin, UserMixin, db.Model):
 class User(PaginatedAPIMixin,  db.Model):
     id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(64),  nullable=False, unique=False)
     last_name = db.Column(db.String(64),  nullable=False, unique=False)
     email = db.Column(db.String(120), index=True, nullable=False, unique=True)
-    #
-    # last_seen = db.Column(db.DateTime, default=datetime.utcnow())
     token = db.Column(db.String(120), index=True, nullable=False, unique=True)
     token_expire_time = db.Column(db.DateTime, index=True, nullable=False)
     created = db.Column(db.DateTime, index=True,
                         nullable=False, default=datetime.utcnow())
+    questions = db.relationship("UserQuestion", backref="user", lazy='dynamic')
 
-    asked = db.relationship(
-        'Question', secondary=user_questions,
-        backref=db.backref('user', lazy='dynamic'), lazy='dynamic')
+    # questions = db.relationship(
+    #     'Question', secondary=user_questions,
+    #     backref=db.backref('question', lazy='dynamic'), lazy='dynamic')
 
     # answered = db.relationship(
     #     'User', secondary=answers,
@@ -89,10 +88,48 @@ class User(PaginatedAPIMixin,  db.Model):
     #     own = Question.query.filter_by(user_id=self.id)
     #     return answered.union(own).order_by(Question.timestamp.desc())
 
-    def create_reset_user_token(self, expires_in=600):
-        current_app.logger.debug(
-            "[create_reset_user_token] User Email: " + str(self.email))
+    # def create_reset_token(self, expires_in=3600):
 
+    def answered_questions(self):
+        return self.questions.filter_by(is_answered=1).order_by(UserQuestion.question_id)
+
+    # AnsweredText	null
+    # ChildQuestionAnsweredText	null
+    # ChildQuestionAnsweredText2	null
+    # OptionId	"11427870"
+    # QuestionId	2474351
+    def save_the_answer(self, answer_data):
+        current_question = Question.query.filter_by(
+            id=answer_data["QuestionId"]).first()
+        answer = None
+        is_correct = False
+        if answer_data["OptionId"] is not None:
+            answer = answer_data["OptionId"]
+        elif answer_data["AnsweredText"] is not None:
+            answer = answer_data["AnsweredText"]
+        elif answer_data["ChildQuestionAnsweredText"] is not None:
+            answer = answer_data["ChildQuestionAnsweredText"]
+        elif answer_data["ChildQuestionAnsweredText2"] is not None:
+            answer = answer_data["ChildQuestionAnsweredText2"]
+        else:
+            # TODO resubmit the question?
+            current_app.logger.error("You must answer the question")
+
+        if answer == current_question.answer:
+            is_correct = True
+
+        # answered_already = UserQuestion.query.filter_by(
+        #     user_id=current_user.id, question_id=current_question.id).first()
+        # if answered_already is not None:
+        #     current_app.logger.error(
+        #         "You answered this already: " + str(answered_already.question_id))
+        # else:
+        uq = UserQuestion(user_id=self.id, question_id=current_question.id,
+                          is_answered=True, is_correct=is_correct)
+        db.session.add(uq)
+        db.session.commit()
+
+    def create_reset_token(self, expires_in=3600):
         if not self.token:
             self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
 
@@ -101,16 +138,19 @@ class User(PaginatedAPIMixin,  db.Model):
             return None
         return self.token
 
-    def remove_user_token(self):
-        self.create_reset_user_token(-1)
+    def remove_token(self):
+        self.create_reset_token(-1)
+
+    def get_quoted_token(self):
+        return quote(self.token, safe='')
 
     def username(self):
         return self.first_name + ' ' + self.last_name
 
-    @staticmethod
+    @ staticmethod
     def verify_user_token(token):
-        current_app.logger.debug(
-            "[verify_user_token] ###### Verify WEB Token ###### : " + token)
+        token = unquote(token)
+        current_app.logger.debug("[verify_user_token] Token: " + token)
         current_user = User.query.filter_by(token=token).first()
         if not current_user or current_user.token_expire_time <= datetime.utcnow():
             return None
@@ -130,11 +170,8 @@ class User(PaginatedAPIMixin,  db.Model):
             'token_expire_time': self.token_expire_time.isoformat() + 'Z' if self.token_expire_time else None,
             'delta_time_seconds':  int(delta_time.total_seconds()),
             'remaining_time_seconds': int(remaining_time.total_seconds()),
-            'question_count':  self.asked.count() if self.asked else [],
-            'questions': ([question.to_dict() for question in self.asked.all()]),
-            '_links': {
-                # 'answered': url_for('get_answered', id=self.id),
-            }
+            # 'question_count':  self.asked.count() if self.asked else [],
+            # 'questions': ([question.to_dict() for question in self.asked.all()]),
         }
         return data
 
@@ -143,16 +180,11 @@ class User(PaginatedAPIMixin,  db.Model):
             if field in data:
                 setattr(self, field, data[field])
 
-        setattr(self, 'token', self.create_reset_user_token())
+        setattr(self, 'token', self.create_reset_token())
 
     def __repr__(self):
         return '<UserName: {0} Email: {1}>'.format(self.first_name + ' ' + self.last_name, self.email)
 
-
-# @login.user_loader
-# def load_user(id):
-#     print("******* ############# [load_user'] Loading User ID: " + str(id))
-#     return User.query.get(int(id))
 
 # ------------------------------------------------------------------------------
 # Decorator for verifying the Token
@@ -163,7 +195,6 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         current_app.logger.debug("[token_required] Path: " + request.path)
-        current_app.logger.debug("[token_required] Data: ")
         data = request.get_json() or {}
         current_app.logger.debug(data)
 
@@ -179,13 +210,14 @@ def token_required(f):
         current_user = User.verify_user_token(current_user_token)
 
         if current_user is None:
-            current_app.logger.error(
+            current_app.logger.debug(
                 "[token_required] No user for token -> Register")
-            current_app.logger.error("[token_required] " + current_user_token)
+            current_app.logger.debug(
+                "[token_required] Token: " + current_user_token)
             return redirect(url_for('auth.register'))
 
         current_app.logger.debug(
-            "[token_required] Current User: " + current_user.username())
+            "[token_required] User: " + current_user.username())
 
         return f(current_user)
 
@@ -194,12 +226,6 @@ def token_required(f):
 #  Question Class
 # ------------------------------------------------------------------------------
 
-# AnsweredText	"10"
-# ChildQuestionAnsweredText	null
-# ChildQuestionAnsweredText2	null
-# OptionId	null
-# QuestionId	2474384
-
 
 class Question(PaginatedAPIMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -207,6 +233,7 @@ class Question(PaginatedAPIMixin, db.Model):
     answer = db.Column(db.String(60),  unique=False, nullable=False)
     options = db.relationship('Option', backref='question', lazy='dynamic')
     files = db.relationship('File', backref='question', lazy='dynamic')
+    users = db.relationship("UserQuestion", backref="question", lazy='dynamic')
 
     def to_dict(self):
         data = {
@@ -223,14 +250,38 @@ class Question(PaginatedAPIMixin, db.Model):
 
 
 # ------------------------------------------------------------------------------
+#  Bridging Table Between User and their Questions
+# ------------------------------------------------------------------------------
+
+class UserQuestion(db.Model):
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey(
+        'question.id'), primary_key=True)
+    is_answered = db.Column(db.Boolean, nullable=False, default=0)
+    is_correct = db.Column(db.Boolean, nullable=False, default=0)
+    db.UniqueConstraint('user_id', 'question_id', name='user_question_uix_1')
+    users = db.relationship("User", backref="question")
+    questions = db.relationship("Question", backref="user")
+
+    def answered_already(self, user_id=99):
+        current_app.logger.debug("[answered_already] User Id: " + str(user_id))
+        return self.query.filter_by(user_id=user_id, is_answered=1).order_by(self.question_id)
+
+    def to_dict(self):
+        data = {
+            'user_id': self.user_id,
+            'question_id': self.question_id,
+            'is_answered': self.is_answered,
+            'is_correct': self.is_correct,
+        }
+        return data
+
+    def __repr__(self):
+        return '<UserQuestion user_id: {0}, question_id: {1}, is_answered: {2}, is_correct: {2}>'.format(self.user_id, self.question_id, self.is_correct)
+# ------------------------------------------------------------------------------
 #  Option Class
 # ------------------------------------------------------------------------------
 
-# AnsweredText	"10"
-# ChildQuestionAnsweredText	null
-# ChildQuestionAnsweredText2	null
-# OptionId	null
-# QuestionId	2474384
 
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -267,21 +318,3 @@ class File(db.Model):
 
     def __repr__(self):
         return '<File id: {0}, location: {1}, question_id: {2}>'.format(self.id, self.location, self.question_id)
-
-# ------------------------------------------------------------------------------
-#  Answer Class
-# ------------------------------------------------------------------------------
-
-# AnsweredText	"10"
-# ChildQuestionAnsweredText	null
-# ChildQuestionAnsweredText2	null
-# OptionId	null
-# QuestionId	2474384
-
-# class Answer(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     answer_text = db.Column(db.String(20), index=False, unique=False, nullable=True)
-#     question_id = db.Column(db.Integer, db.ForeignKey('question.id'))
-
-#     def __repr__(self):
-#         return '<Answer {}>'.format(self.body)

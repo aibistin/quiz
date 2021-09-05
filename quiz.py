@@ -10,4 +10,4 @@ cli.register(app)
 # For using the flask_shell
 @app.shell_context_processor
 def make_shell_context():
-    return {'db': db, 'User': User, 'Question': Question, 'Option': Option, 'File': File}
+    return {'db': db, 'User': User, 'Question': Question, 'Option': Option, 'File': File, 'UserQuestion': UserQuestion}

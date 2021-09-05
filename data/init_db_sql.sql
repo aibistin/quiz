@@ -29,13 +29,13 @@ INSERT INTO option ( body,  question_id, is_answer ) VALUES ('Paris',3, 0 );
 INSERT INTO option ( body,  question_id, is_answer ) VALUES ('Milton Keynes',3,0 );
 
 
-INSERT into user_questions (user_id, question_id, is_correct) VALUES (1, 1, 0);
-INSERT into user_questions (user_id, question_id, is_correct) VALUES (1, 2, 1);
-INSERT into user_questions (user_id, question_id, is_correct) VALUES (1, 3, 0);
+-- INSERT into user_questions (user_id, question_id, is_correct) VALUES (1, 1, 0);
+-- INSERT into user_questions (user_id, question_id, is_correct) VALUES (1, 2, 1);
+-- INSERT into user_questions (user_id, question_id, is_correct) VALUES (1, 3, 0);
 
-INSERT into user_questions (user_id, question_id, is_correct) VALUES (2, 1, 1);
-INSERT into user_questions (user_id, question_id, is_correct) VALUES (2, 2, 0);
-INSERT into user_questions (user_id, question_id, is_correct) VALUES (2, 3, 1);
+-- INSERT into user_questions (user_id, question_id, is_correct) VALUES (2, 1, 1);
+-- INSERT into user_questions (user_id, question_id, is_correct) VALUES (2, 2, 0);
+-- INSERT into user_questions (user_id, question_id, is_correct) VALUES (2, 3, 1);
 
 
 

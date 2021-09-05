@@ -22,7 +22,7 @@ def register():
         if 'first_name' not in data or 'last_name' not in data or 'email' not in data:
             return bad_request(notify_msg)
 
-        # TODO Add validation
+        # TODO Add input validation
         if User.query.filter_by(email=data['email']).first():
             current_app.logger.warn(
                 "[register] Existing User: " + data["email"])
@@ -38,11 +38,15 @@ def register():
             db.session.commit()
 
         response_data = user.to_dict()
-        response_data["next_url"] = url_for('main.test', user_token=user.token)
+        response_data["next_url"] = request.host_url.rstrip(
+            '/') + url_for('main.test', user_token=user.get_quoted_token())
         response = jsonify(response_data)
         response.status_code = 201
+
         response.headers['Location'] = url_for(
             'main.test', user_token=user.token)
+        current_app.logger.debug("[register] response data: ")
+        current_app.logger.debug(response_data)
         return response
 
     return error_response(401, notify_msg)
