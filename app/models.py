@@ -5,55 +5,13 @@ from datetime import datetime, timedelta
 from time import time
 from hashlib import md5
 from flask import current_app,  redirect, request, url_for
-# from flask_login import UserMixin
-# from app import create_app, db, login
 from app import db
 from functools import wraps
 from urllib.parse import quote, unquote
 from werkzeug.security import safe_str_cmp
 
 
-# Associative or bridging table
-# user_questions = db.Table('user_questions',
-#                           db.Column('user_id', db.Integer,
-#                                     db.ForeignKey('user.id')),
-#                           db.Column('question_id', db.Integer,
-#                                     db.ForeignKey('question.id')),
-#                           db.Column('is_correct', db.Boolean,
-#                                     nullable=False, default=0),
-#                           db.UniqueConstraint(
-#                               'user_id', 'question_id', name='user_question_uix_1')
-#                           )
-
-
-# ------------------------------------------------------------------------------
-# Mixin - Paginate the API responses
-# ------------------------------------------------------------------------------
-class PaginatedAPIMixin(object):
-    @staticmethod
-    def to_collection_dict(query, page, per_page, endpoint, **kwargs):
-        resources = query.paginate(page, per_page, False)
-        data = {
-            'items': [item.to_dict() for item in resources.items],
-            'data': {
-                'page': page,
-                'per_page': per_page,
-                'total_pages': resources.pages,
-                'total_items': resources.total
-            },
-            '_links': {
-                'self': url_for(endpoint, page=page, per_page=per_page,
-                                **kwargs),
-                'next': url_for(endpoint, page=page + 1, per_page=per_page,
-                                **kwargs) if resources.has_next else None,
-                'prev': url_for(endpoint, page=page - 1, per_page=per_page,
-                                **kwargs) if resources.has_prev else None
-            }
-        }
-        return data
-
-
-class User(PaginatedAPIMixin,  db.Model):
+class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(64),  nullable=False, unique=False)
     last_name = db.Column(db.String(64),  nullable=False, unique=False)
@@ -64,47 +22,69 @@ class User(PaginatedAPIMixin,  db.Model):
                         nullable=False, default=datetime.utcnow())
     questions = db.relationship("UserQuestion", backref="user", lazy='dynamic')
 
-    # questions = db.relationship(
-    #     'Question', secondary=user_questions,
-    #     backref=db.backref('question', lazy='dynamic'), lazy='dynamic')
+    def last_answered_question_id(self):
+        last_answered = (self.questions.filter_by(is_answered=True).order_by(
+            UserQuestion.question_id.desc())).first()
+        return last_answered.question_id if last_answered else None
 
-    # answered = db.relationship(
-    #     'User', secondary=answers,
-    #     primaryjoin=(answers.c.answer_id == id),
-    #     secondaryjoin=(answers.c.answered_id == id),
-    #     backref=db.backref('answers', lazy='dynamic'), lazy='dynamic')
+    def get_last_unanswered_question_id(self):
+        last_unanswered_user_question = (self.questions.filter_by(is_answered=False).order_by(
+            UserQuestion.question_id.desc())).first()
+        return last_unanswered_user_question.question_id if last_unanswered_user_question else None
 
-    # def answered_questions(self):
-    #     answered = Question.query.join(
-    #         answers, (answers.c.answered_id == Question.user_id)).filter(
-    #             answers.c.answer_id == self.id)
-    #     own = Question.query.filter_by(user_id=self.id)
-    #     return answered.union(own).order_by(Question.timestamp.desc())
 
-    # def asked_questions(self):
-    #     answered = Question.query.join(
-    #         answers, (answers.c.answered_id == Question.user_id)).filter(
-    #             answers.c.answer_id == self.id)
-    #     own = Question.query.filter_by(user_id=self.id)
-    #     return answered.union(own).order_by(Question.timestamp.desc())
+    def get_next_question(self):
+        next_question = None
+        last_unanswered_user_question = (self.questions.filter_by(is_answered=False).order_by(
+            UserQuestion.question_id.desc())).first()
 
-    # def create_reset_token(self, expires_in=3600):
+        current_app.logger.debug("[get_next_question] last_unanswered_user_question")
+        current_app.logger.debug(last_unanswered_user_question)
 
-    def answered_questions(self):
-        return self.questions.filter_by(is_answered=1).order_by(UserQuestion.question_id)
+        if last_unanswered_user_question:
+            next_question = db.session.query(Question).filter(
+                Question.id == last_unanswered_user_question.question_id).first()
+        else:
+            last_answered_id = self.last_answered_question_id() or 0
+            next_question = db.session.query(Question).filter(Question.id > last_answered_id ).order_by(Question.id).first()
 
+        return next_question
+
+    #    Answer 
     # AnsweredText	null
     # ChildQuestionAnsweredText	null
     # ChildQuestionAnsweredText2	null
     # OptionId	"11427870"
     # QuestionId	2474351
-    def save_the_answer(self, answer_data):
-        current_question = Question.query.filter_by(
-            id=answer_data["QuestionId"]).first()
+
+    def save_the_answer_to_db(self, answer_data):
         answer = None
         is_correct = False
+        answered_question = Question.query.filter_by(
+            id=answer_data["QuestionId"]).first()
+        current_app.logger.debug("Answered Question")
+        current_app.logger.debug(answered_question)
+
+        user_question_asked  =  self.questions.filter_by(question_id=answer_data["QuestionId"]).first()
+        if user_question_asked is None:
+            #TODO Throw an error!
+            current_app.logger.error("[save_the_answer_to_db] ERROR! You must ask a question before answering it!")
+            return
+
+        current_app.logger.debug("[save_the_answer_to_db] Asked UserQuestion")
+        current_app.logger.debug(user_question_asked)
+
+        current_app.logger.debug("[save_the_answer_to_db] Users Answer")
+        current_app.logger.debug(answer_data)
+
         if answer_data["OptionId"] is not None:
-            answer = answer_data["OptionId"]
+            option = answered_question.options.filter(
+                Option.id == answer_data["OptionId"]).first()
+            # TODO use this or the user_question.is_correct field
+            if option is None: 
+                current_app.logger.error("ERROR: That option, " + answer_data["OptionId"]+ ", doesn't exist for this question!")
+            else:
+                answer = option.body
         elif answer_data["AnsweredText"] is not None:
             answer = answer_data["AnsweredText"]
         elif answer_data["ChildQuestionAnsweredText"] is not None:
@@ -112,27 +92,40 @@ class User(PaginatedAPIMixin,  db.Model):
         elif answer_data["ChildQuestionAnsweredText2"] is not None:
             answer = answer_data["ChildQuestionAnsweredText2"]
         else:
-            # TODO resubmit the question?
+            # TODO resubmit the question, or throw an error?
             current_app.logger.error("You must answer the question")
 
-        if answer == current_question.answer:
+        if str(answer) == str(answered_question.answer):
             is_correct = True
 
-        # answered_already = UserQuestion.query.filter_by(
-        #     user_id=current_user.id, question_id=current_question.id).first()
-        # if answered_already is not None:
-        #     current_app.logger.error(
-        #         "You answered this already: " + str(answered_already.question_id))
-        # else:
-        uq = UserQuestion(user_id=self.id, question_id=current_question.id,
-                          is_answered=True, is_correct=is_correct)
-        db.session.add(uq)
+        user_question_asked.is_answered = True
+        user_question_asked.is_correct = is_correct
         db.session.commit()
+
+
+    def save_the_question_to_db(self, question_id):
+        asked_question = Question.query.filter_by(id=question_id).first()
+        current_app.logger.debug("[save_the_question_to_db] Asked Question")
+        current_app.logger.debug(asked_question)
+
+        # Check if it already exists first
+        user_question  =  self.questions.filter_by(question_id=asked_question.id).first()
+        current_app.logger.debug("[save_the_question_to_db] Existing User Question")
+        current_app.logger.debug(user_question)
+
+        if not user_question:
+            user_question = UserQuestion(user_id=self.id, question_id=asked_question.id,
+                              is_answered=False, is_correct=False)
+            db.session.add(user_question)
+            db.session.commit()
+            current_app.logger.debug("[save_the_question_to_db] New User Question")
+            current_app.logger.debug(user_question)
+
+        return user_question
 
     def create_reset_token(self, expires_in=3600):
         if not self.token:
             self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
-
         self.token_expire_time = datetime.utcnow() + timedelta(seconds=expires_in)
         if expires_in <= 0:
             return None
@@ -195,8 +188,6 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         current_app.logger.debug("[token_required] Path: " + request.path)
-        data = request.get_json() or {}
-        current_app.logger.debug(data)
 
         if 'user_token' in request.view_args:
             current_user_token = request.view_args['user_token']
@@ -227,7 +218,7 @@ def token_required(f):
 # ------------------------------------------------------------------------------
 
 
-class Question(PaginatedAPIMixin, db.Model):
+class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     body = db.Column(db.String(240),  unique=True, nullable=False)
     answer = db.Column(db.String(60),  unique=False, nullable=False)
@@ -295,6 +286,7 @@ class Option(db.Model):
             'id': self.id,
             'body': self.body,
             'question_id': self.question_id,
+            'is_answer': self.is_answer,
         }
         return data
 
