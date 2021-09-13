@@ -2,7 +2,8 @@
 import logging
 import os
 from flask import current_app, Flask, request
-from config import Config
+# from config import Config
+from config import config
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from logging.handlers import RotatingFileHandler
@@ -12,9 +13,11 @@ db = SQLAlchemy()
 migrate = Migrate()
 
 
-def create_app(config_class=Config):
+# def create_app(config_class=Config):
+def create_app(config_name):
     app = Flask(__name__)
-    app.config.from_object(config_class)
+    # app.config.from_object(config_class)
+    app.config.from_object(config[config_name])
 
     db.init_app(app)
     migrate.init_app(app, db)

@@ -28,7 +28,11 @@ def test(current_user=None):
         answered_question_id = answer_data["QuestionId"]
         last_unanswered_question_id = current_user.get_last_unanswered_question_id()
 
-        if int(answered_question_id) != int(last_unanswered_question_id):
+        if answered_question_id is None:
+            current_app.logger.error("There's no question to answer")
+        elif last_unanswered_question_id:
+            current_app.logger.error("There are no more unanswered questoins to answer")
+        elif int(answered_question_id) != int(last_unanswered_question_id):
             current_app.logger.error("You answered the wrong question!")
             current_app.logger.error("Got answered id:" + answered_question_id)
             current_app.logger.error(
@@ -48,9 +52,11 @@ def test(current_user=None):
         current_app.logger.error("ERROR! No more questions")
         #TODO Tally answers, final survey, finish
 
-    data['next_url'] = url_for('main.test', user_token=current_user.get_quoted_token(),
+    data['user_token'] = current_user.get_quoted_token() or None
+
+    data['next_url'] = url_for('main.test', user_token=data['user_token'],
                                next_question_id=next_question.id if next_question else None)
-    data['prev_url'] = url_for('main.test', user_token=current_user.get_quoted_token(),
+    data['prev_url'] = url_for('main.test', user_token=data['user_token'],
                                previous_question_id=last_answered_id)
     data["user"] = current_user.to_dict()
 

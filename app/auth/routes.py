@@ -17,8 +17,6 @@ def register():
     if request.method == 'POST':
         data = request.get_json() or {}
         user = None
-        if 'csrf_token' not in data:
-            current_app.logger.warn("[register] csrf_token not present")
         if 'first_name' not in data or 'last_name' not in data or 'email' not in data:
             return bad_request(notify_msg)
 
@@ -33,7 +31,7 @@ def register():
         else:
             current_app.logger.debug("Adding a new user " + data["email"])
             user = User()
-            user.from_dict(data, new_user=True)
+            user.from_dict(data)
             db.session.add(user)
             db.session.commit()
 

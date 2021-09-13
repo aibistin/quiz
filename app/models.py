@@ -32,13 +32,13 @@ class User(db.Model):
             UserQuestion.question_id.desc())).first()
         return last_unanswered_user_question.question_id if last_unanswered_user_question else None
 
-
     def get_next_question(self):
         next_question = None
         last_unanswered_user_question = (self.questions.filter_by(is_answered=False).order_by(
             UserQuestion.question_id.desc())).first()
 
-        current_app.logger.debug("[get_next_question] last_unanswered_user_question")
+        current_app.logger.debug(
+            "[get_next_question] last_unanswered_user_question")
         current_app.logger.debug(last_unanswered_user_question)
 
         if last_unanswered_user_question:
@@ -46,11 +46,12 @@ class User(db.Model):
                 Question.id == last_unanswered_user_question.question_id).first()
         else:
             last_answered_id = self.last_answered_question_id() or 0
-            next_question = db.session.query(Question).filter(Question.id > last_answered_id ).order_by(Question.id).first()
+            next_question = db.session.query(Question).filter(
+                Question.id > last_answered_id).order_by(Question.id).first()
 
         return next_question
 
-    #    Answer 
+    #    Answer Format
     # AnsweredText	null
     # ChildQuestionAnsweredText	null
     # ChildQuestionAnsweredText2	null
@@ -59,21 +60,25 @@ class User(db.Model):
 
     def save_the_answer_to_db(self, answer_data):
         answer = None
-        is_correct = False
-        answered_question = Question.query.filter_by(
-            id=answer_data["QuestionId"]).first()
-        current_app.logger.debug("Answered Question")
-        current_app.logger.debug(answered_question)
 
-        user_question_asked  =  self.questions.filter_by(question_id=answer_data["QuestionId"]).first()
+        user_question_asked = self.questions.filter_by(
+            question_id=answer_data["QuestionId"]).first()
         if user_question_asked is None:
-            #TODO Throw an error!
-            current_app.logger.error("[save_the_answer_to_db] ERROR! You must ask a question before answering it!")
+            # TODO Throw an error!
+            current_app.logger.error(
+                "[save_the_answer_to_db] Question must be asked before its answered!")
             return
 
-        current_app.logger.debug("[save_the_answer_to_db] Asked UserQuestion")
-        current_app.logger.debug(user_question_asked)
+        answered_question = Question.query.filter_by(
+            id=answer_data["QuestionId"]).first()
 
+        if answered_question is None:
+            current_app.logger.error(
+                "[save_the_answer_to_db] No Question for id " + answer_data["QuestionId"])
+            return
+
+        current_app.logger.debug("[save_the_answer_to_db] Answered Question")
+        current_app.logger.debug(answered_question)
         current_app.logger.debug("[save_the_answer_to_db] Users Answer")
         current_app.logger.debug(answer_data)
 
@@ -81,8 +86,9 @@ class User(db.Model):
             option = answered_question.options.filter(
                 Option.id == answer_data["OptionId"]).first()
             # TODO use this or the user_question.is_correct field
-            if option is None: 
-                current_app.logger.error("ERROR: That option, " + answer_data["OptionId"]+ ", doesn't exist for this question!")
+            if option is None:
+                current_app.logger.error(
+                    "Option, " + str(answer_data["OptionId"]) + ", doesn't exist for this question!")
             else:
                 answer = option.body
         elif answer_data["AnsweredText"] is not None:
@@ -96,12 +102,11 @@ class User(db.Model):
             current_app.logger.error("You must answer the question")
 
         if str(answer) == str(answered_question.answer):
-            is_correct = True
-
+            user_question_asked.is_correct = True
+        else:
+            user_question_asked.is_correct = False
         user_question_asked.is_answered = True
-        user_question_asked.is_correct = is_correct
         db.session.commit()
-
 
     def save_the_question_to_db(self, question_id):
         asked_question = Question.query.filter_by(id=question_id).first()
@@ -109,16 +114,19 @@ class User(db.Model):
         current_app.logger.debug(asked_question)
 
         # Check if it already exists first
-        user_question  =  self.questions.filter_by(question_id=asked_question.id).first()
-        current_app.logger.debug("[save_the_question_to_db] Existing User Question")
+        user_question = self.questions.filter_by(
+            question_id=asked_question.id).first()
+        current_app.logger.debug(
+            "[save_the_question_to_db] Existing User Question")
         current_app.logger.debug(user_question)
 
         if not user_question:
             user_question = UserQuestion(user_id=self.id, question_id=asked_question.id,
-                              is_answered=False, is_correct=False)
+                                         is_answered=False, is_correct=False)
             db.session.add(user_question)
             db.session.commit()
-            current_app.logger.debug("[save_the_question_to_db] New User Question")
+            current_app.logger.debug(
+                "[save_the_question_to_db] New User Question")
             current_app.logger.debug(user_question)
 
         return user_question
@@ -127,27 +135,24 @@ class User(db.Model):
         if not self.token:
             self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
         self.token_expire_time = datetime.utcnow() + timedelta(seconds=expires_in)
-        if expires_in <= 0:
-            return None
-        return self.token
+        return self.token if (expires_in > 1) else None
 
     def remove_token(self):
         self.create_reset_token(-1)
 
     def get_quoted_token(self):
-        return quote(self.token, safe='')
+        # "safe=''" == Quote everything including '/'
+        return quote(self.token, safe='') if (self.token_expire_time > datetime.utcnow()) else None
 
     def username(self):
-        return self.first_name + ' ' + self.last_name
+        return self.first_name.capitalize() + ' ' + self.last_name.capitalize()
 
     @ staticmethod
     def verify_user_token(token):
         token = unquote(token)
         current_app.logger.debug("[verify_user_token] Token: " + token)
         current_user = User.query.filter_by(token=token).first()
-        if not current_user or current_user.token_expire_time <= datetime.utcnow():
-            return None
-        return current_user
+        return current_user if (current_user and current_user.token_expire_time > datetime.utcnow()) else None
 
     def to_dict(self):
         delta_time = datetime.utcnow() - self.created
@@ -159,16 +164,14 @@ class User(db.Model):
             'first_name': self.first_name,
             'last_name': self.last_name,
             'email': self.email,
-            'token': self.token,
+            'user_token': self.get_quoted_token(),
             'token_expire_time': self.token_expire_time.isoformat() + 'Z' if self.token_expire_time else None,
             'delta_time_seconds':  int(delta_time.total_seconds()),
             'remaining_time_seconds': int(remaining_time.total_seconds()),
-            # 'question_count':  self.asked.count() if self.asked else [],
-            # 'questions': ([question.to_dict() for question in self.asked.all()]),
         }
         return data
 
-    def from_dict(self, data, new_user=False):
+    def from_dict(self, data):
         for field in ['first_name', 'last_name', 'email']:
             if field in data:
                 setattr(self, field, data[field])
@@ -187,11 +190,6 @@ class User(db.Model):
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        current_app.logger.debug("[token_required] Path: " + request.path)
-
-        if 'user_token' in request.view_args:
-            current_user_token = request.view_args['user_token']
-
         current_user_token = request.view_args['user_token'] if 'user_token' in request.view_args else None
 
         if not current_user_token:
@@ -202,9 +200,7 @@ def token_required(f):
 
         if current_user is None:
             current_app.logger.debug(
-                "[token_required] No user for token -> Register")
-            current_app.logger.debug(
-                "[token_required] Token: " + current_user_token)
+                "[token_required] No user for token " + current_user_token + " -> Register")
             return redirect(url_for('auth.register'))
 
         current_app.logger.debug(

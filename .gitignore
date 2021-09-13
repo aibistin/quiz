@@ -137,13 +137,15 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# I added for Flask
+# For this current project quiz.py
 .flaskenv
 .temp
 # config.py
-app.db
+*.db
+*.db_bk
 logs/
 *~
 *.swp
 *.swo
 migrations/
+
