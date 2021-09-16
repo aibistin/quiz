@@ -4,11 +4,9 @@ import os
 from datetime import datetime, timedelta
 from time import time
 from hashlib import md5
-from flask import current_app,  redirect, request, url_for
+from flask import current_app, redirect, request, url_for
 from app import db
 from functools import wraps
-from urllib.parse import quote, unquote
-from werkzeug.security import safe_str_cmp
 
 
 class User(db.Model):
@@ -51,12 +49,14 @@ class User(db.Model):
 
         return next_question
 
-    #    Answer Format
-    # AnsweredText	null
-    # ChildQuestionAnsweredText	null
-    # ChildQuestionAnsweredText2	null
-    # OptionId	"11427870"
-    # QuestionId	2474351
+    #    Sample Answer Format
+    # {
+    #     "AnsweredText": "42",
+    #     "ChildQuestionAnsweredText": null,
+    #     "ChildQuestionAnsweredText2": null,
+    #     "OptionId": null,
+    #     "QuestionId": "4"
+    # }
 
     def save_the_answer_to_db(self, answer_data):
         answer = None
@@ -98,7 +98,7 @@ class User(db.Model):
         elif answer_data["ChildQuestionAnsweredText2"] is not None:
             answer = answer_data["ChildQuestionAnsweredText2"]
         else:
-            # TODO resubmit the question, or throw an error?
+            # TODO re-submit the question, or throw an error?
             current_app.logger.error("You must answer the question")
 
         if str(answer) == str(answered_question.answer):
@@ -113,7 +113,7 @@ class User(db.Model):
         current_app.logger.debug("[save_the_question_to_db] Asked Question")
         current_app.logger.debug(asked_question)
 
-        # Check if it already exists first
+        # Check if it the user was asked this question
         user_question = self.questions.filter_by(
             question_id=asked_question.id).first()
         current_app.logger.debug(
@@ -128,28 +128,27 @@ class User(db.Model):
             current_app.logger.debug(
                 "[save_the_question_to_db] New User Question")
             current_app.logger.debug(user_question)
-
         return user_question
 
     def create_reset_token(self, expires_in=3600):
         if not self.token:
-            self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
+            # '/' in the token will cause a routing error
+            self.token = (base64.b64encode(os.urandom(24)).decode('utf-8')).replace('/','X')
+
         self.token_expire_time = datetime.utcnow() + timedelta(seconds=expires_in)
         return self.token if (expires_in > 1) else None
 
     def remove_token(self):
         self.create_reset_token(-1)
 
-    def get_quoted_token(self):
-        # "safe=''" == Quote everything including '/'
-        return quote(self.token, safe='') if (self.token_expire_time > datetime.utcnow()) else None
+    def get_token(self):
+        return self.token if (self.token_expire_time > datetime.utcnow()) else None
 
-    def username(self):
+    def get_username(self):
         return self.first_name.capitalize() + ' ' + self.last_name.capitalize()
 
     @ staticmethod
     def verify_user_token(token):
-        token = unquote(token)
         current_app.logger.debug("[verify_user_token] Token: " + token)
         current_user = User.query.filter_by(token=token).first()
         return current_user if (current_user and current_user.token_expire_time > datetime.utcnow()) else None
@@ -160,11 +159,10 @@ class User(db.Model):
 
         data = {
             'id': self.id,
-            'username': self.first_name + ' ' + self.last_name,
+            'username': self.get_username(),
             'first_name': self.first_name,
             'last_name': self.last_name,
             'email': self.email,
-            'user_token': self.get_quoted_token(),
             'token_expire_time': self.token_expire_time.isoformat() + 'Z' if self.token_expire_time else None,
             'delta_time_seconds':  int(delta_time.total_seconds()),
             'remaining_time_seconds': int(remaining_time.total_seconds()),
@@ -204,7 +202,7 @@ def token_required(f):
             return redirect(url_for('auth.register'))
 
         current_app.logger.debug(
-            "[token_required] User: " + current_user.username())
+            "[token_required] User: " + current_user.get_username())
 
         return f(current_user)
 

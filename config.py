@@ -17,7 +17,7 @@ class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'quiz_dev_db.db')
-    # Notifys of db changes - Adds a log of overhead when True
+    # Notifys of db changes - Adds a lot of overhead when True
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
@@ -26,7 +26,7 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or \
         'sqlite://'
 
-    # Notifys of db changes - Adds a log of overhead when True
+    # Notifys of db changes - Adds a lot of overhead when True
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 

@@ -28,8 +28,8 @@ class BasicsTestCase(unittest.TestCase):
             {'first_name': 'fred', 'last_name': 'flint', 'email': 'fred@flint.com'})
         db.session.add(user)
         db.session.commit()
-        self.assertEqual(user.username(), 'Fred Flint',
-                         "User.username is correct")
+        self.assertEqual(user.get_username(), 'Fred Flint',
+                         "User.get_username is correct")
         user_same_email = User()
         user_same_email.from_dict(
             {'first_name': 'almost', 'last_name': 'same', 'email': 'fred@flint.com'})
@@ -43,16 +43,13 @@ class BasicsTestCase(unittest.TestCase):
             {'first_name': 'new', 'last_name': 'user', 'email': 'new@user.com'})
         db.session.add(user)
         db.session.commit()
-        token = user.create_reset_token(10)
-        self.assertIs(len(token), 32, "User token is ok")
-        quoted_token = user.get_quoted_token()
-        self.assertGreaterEqual(len(quoted_token), len(
-            token), "Quoted token looks ok")
-        verified_user = user.verify_user_token(token)
+        user_token = user.create_reset_token(10)
+        self.assertEqual(len(user_token), 32, "User token is ok")
+        verified_user = user.verify_user_token(user_token)
 
-        self.assertTrue((user.username() == verified_user.username()) and
+        self.assertTrue((user.get_username() == verified_user.get_username()) and
                         (user.email == verified_user.email),  "Token verification returns the correct user")
 
         user.remove_token()
-        quoted_token = user.get_quoted_token()
-        self.assertIs(quoted_token, None, "User token was forcibly expired")
+        user_token = user.get_token()
+        self.assertIs(user_token, None, "User token was forcibly expired")

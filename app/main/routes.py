@@ -30,8 +30,9 @@ def test(current_user=None):
 
         if answered_question_id is None:
             current_app.logger.error("There's no question to answer")
-        elif last_unanswered_question_id:
-            current_app.logger.error("There are no more unanswered questoins to answer")
+        elif last_unanswered_question_id is None:
+            current_app.logger.error(
+                "There are no more unanswered questions to answer")
         elif int(answered_question_id) != int(last_unanswered_question_id):
             current_app.logger.error("You answered the wrong question!")
             current_app.logger.error("Got answered id:" + answered_question_id)
@@ -41,23 +42,20 @@ def test(current_user=None):
             current_app.logger.debug("Saving your answer")
             current_user.save_the_answer_to_db(answer_data)
 
-    data = {}
+    response_data = {}
     next_question = current_user.get_next_question()
     if next_question:
         current_app.logger.debug("Saving your Question")
         current_user.save_the_question_to_db(next_question.id)
         current_app.logger.debug("Next Question Id: " + str(next_question.id))
-        data["current_question"] = next_question.to_dict()
+        response_data["current_question"] = next_question.to_dict()
     else:
         current_app.logger.error("ERROR! No more questions")
-        #TODO Tally answers, final survey, finish
+        # TODO Tally answers, final survey, finish
 
-    data['user_token'] = current_user.get_quoted_token() or None
+    response_data['test_url'] = request.host_url.rstrip(
+        '/') + url_for('main.test', user_token=current_user.get_token())
 
-    data['next_url'] = url_for('main.test', user_token=data['user_token'],
-                               next_question_id=next_question.id if next_question else None)
-    data['prev_url'] = url_for('main.test', user_token=data['user_token'],
-                               previous_question_id=last_answered_id)
-    data["user"] = current_user.to_dict()
+    response_data["user"] = current_user.to_dict()
 
-    return jsonify(data)
+    return jsonify(response_data)

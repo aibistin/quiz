@@ -1,5 +1,5 @@
 # app/auth/routes.py
-from flask import current_app,  jsonify,   request, url_for
+from flask import current_app, jsonify, request, url_for
 from app import db
 from app.auth import bp
 from app.errors import bad_request, error_response
@@ -36,8 +36,10 @@ def register():
             db.session.commit()
 
         response_data = user.to_dict()
-        response_data["next_url"] = request.host_url.rstrip(
-            '/') + url_for('main.test', user_token=user.get_quoted_token())
+
+        response_data['test_url'] = request.host_url.rstrip(
+            '/') + url_for('main.test', user_token=user.get_token())
+
         response = jsonify(response_data)
         response.status_code = 201
 
